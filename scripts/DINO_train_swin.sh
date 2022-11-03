@@ -1,3 +1,6 @@
+source /opt/miniconda3/etc/profile.d/conda.sh
+conda activate dino
+
 coco_path=$1
 backbone_dir=$2
 export CUDA_VISIBLE_DEVICES=$3 && python main.py \
@@ -5,3 +8,6 @@ export CUDA_VISIBLE_DEVICES=$3 && python main.py \
 	--options dn_scalar=100 embed_init_tgt=TRUE \
 	dn_label_coef=1.0 dn_bbox_coef=1.0 use_ema=False \
 	dn_box_noise_scale=1.0 backbone_dir=$backbone_dir
+
+
+conda env list
