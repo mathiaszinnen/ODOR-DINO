@@ -47,6 +47,7 @@ def get_args_parser():
     parser.add_argument('--remove_difficult', action='store_true')
     parser.add_argument('--fix_size', action='store_true')
 
+    parser.add_argument('--no_distribute', action='store_true')
 
     # training parameters
     parser.add_argument('--output_dir', default='',
