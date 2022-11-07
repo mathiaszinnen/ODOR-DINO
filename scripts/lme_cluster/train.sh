@@ -24,19 +24,17 @@ cd ${WORKDIR}
 tar -xf /net/cluster/shared_dataset/ODOR/ODOR_coco.tar 
 
 #start training
-python run_with_submitit.py\
+python main.py\
 	--output_dir /net/cluster/zinnen/logs/DINO/lme/\
 	-c ${WORKDIR}/config/DINO/ODOR_test.py\
-	--job_dir logs/DINO/swintest-%j \
 	--coco_path ${WORKDIR}/coco-style/ \
 	--pretrain_model_path /net/cluster/zinnen/models/swin_large_patch4_window12_384_22k.pth\
 	--finetune_ignore label_enc.weight class_embed\
 	--save_results\
 	--save_log\
-	--nodes 1\
-	--ngpus 1\
+	--no_distribute\
 	--options dn_scalar=100 embed_init_tgt=TRUE \
 	dn_label_coef=1.0 dn_bbox_coef=1.0 use_ema=False \
-	dn_box_noise_scale=1.0
-
+	dn_box_noise_scale=1.0 backbone_dir=/net/cluster/zinnen/models
+	
 echo 'yay'
