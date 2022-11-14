@@ -271,6 +271,15 @@ class DINO(nn.Module):
             assert targets is None
             input_query_bbox = input_query_label = attn_mask = dn_meta = None
 
+        # need text input here
+        # text_emb =  text_backbone(text_input) # (bs x 1 x 256)
+        # srcs: [(bs x c x h x w)] (len 3)
+
+
+
+
+
+        # hs, reference, .... = self.transformer(srcs, text_srcs, ... )
         hs, reference, hs_enc, ref_enc, init_box_proposal = self.transformer(srcs, masks, input_query_bbox, poss,input_query_label,attn_mask)
         # In case num object=0
         hs[0]+=self.label_enc.weight[0,0]*0.0

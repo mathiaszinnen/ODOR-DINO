@@ -8,3 +8,4 @@
 # ------------------------------------------------------------------------
 
 from .dino import build_dino
+from .multimodal_dino import build_multimodal_dino
