@@ -289,6 +289,14 @@ def collate_fn(batch):
     return tuple(batch)
 
 
+def collate_fn_mmodor(batch):
+    batch = list(zip(*batch))
+    batch[0] = nested_tensor_from_tensor_list(batch[0])
+    sample = torch.tensor([batch[0], batch[1]])
+    target = batch[2]
+    return (sample, target)
+
+
 def _max_by_axis(the_list):
     # type: (List[List[int]]) -> List[int]
     maxes = the_list[0]
@@ -296,7 +304,6 @@ def _max_by_axis(the_list):
         for index, item in enumerate(sublist):
             maxes[index] = max(maxes[index], item)
     return maxes
-
 
 class NestedTensor(object):
     def __init__(self, tensors, mask: Optional[Tensor]):

@@ -187,10 +187,15 @@ def main(args):
     batch_sampler_train = torch.utils.data.BatchSampler(
         sampler_train, args.batch_size, drop_last=True)
 
+    if args.dataset_file == "multimodal_odor":
+        collate_fn = utils.collate_fn_mmodor
+    else:
+        collate_fn = utils.collate_fn
+
     data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,
-                                   collate_fn=utils.collate_fn, num_workers=args.num_workers)
+                                   collate_fn=collate_fn, num_workers=args.num_workers)
     data_loader_val = DataLoader(dataset_val, 1, sampler=sampler_val,
-                                 drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers)
+                                 drop_last=False, collate_fn=collate_fn, num_workers=args.num_workers)
 
     if args.onecyclelr:
         lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=len(data_loader_train), epochs=args.epochs, pct_start=0.2)

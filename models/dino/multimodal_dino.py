@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 import copy
 
 from models.dino.backbone import build_backbone
@@ -62,13 +63,36 @@ class MultimodalDINO(DINO):
         #          dn_box_noise_scale = dn_box_noise_scale,
         #          dn_label_noise_ratio = dn_label_noise_ratio,
         #          dn_labelbook_size = dn_labelbook_size,)
-        super().__init__(backbone=backbone, transformer=transformer, num_classes=num_classes, num_queries=num_queries
+        super().__init__(backbone=backbone, transformer=transformer, num_classes=num_classes, num_queries=num_queries,
+                         num_feature_levels=num_feature_levels, iter_update=iter_update, query_dim=4,
+                         dec_pred_bbox_embed_share=dec_pred_bbox_embed_share
                          )
+        ## copied from super
+        self.num_queries = num_queries
+        self.transformer = transformer
+        self.num_classes = num_classes
+        self.hidden_dim = hidden_dim = transformer.d_model
+        # self.num_feature_levels = num_feature_levels
+        self.nheads = nheads
+        self.label_enc = nn.Embedding(dn_labelbook_size + 1, hidden_dim)
+
+        self.random_refpoints_xy = random_refpoints_xy
+        self.fix_refpoints_hw = fix_refpoints_hw
+
+        # for dn training
+        self.num_patterns = num_patterns
+        self.dn_number = dn_number
+        self.dn_box_noise_scale = dn_box_noise_scale
+        self.dn_label_noise_ratio = dn_label_noise_ratio
+        self.dn_labelbook_size = dn_labelbook_size
+
+
+
         ## add text embedding extraction clip backbone
-        self.tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
+        # self.tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased') better do that in dataset next
         self.text_backbone = AutoModel.from_pretrained('distilbert-base-uncased')
 
-    def forward(self, samples: NestedTensor, text_input, targets: List = None):
+    def forward(self, samples: NestedTensor, targets: List = None):
         """ The forward expects a NestedTensor, which consists of:
                - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
                - text_input.tensor: batched text metadata, of shape [batch_size x 1 x length]

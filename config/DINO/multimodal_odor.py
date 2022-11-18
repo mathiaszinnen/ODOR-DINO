@@ -111,4 +111,4 @@ ema_epoch = 0
 
 use_detached_boxes_dec_out = False
 
-txt_csv = '/hdd/datasets/annotations-nightly/labels_meta.csv'
+txt_csv = '/hdd/datasets/annotations-nightly/metadata/meta.csv'
