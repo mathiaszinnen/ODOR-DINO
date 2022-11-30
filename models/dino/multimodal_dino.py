@@ -9,14 +9,12 @@ from models.dino.dn_components import prepare_for_cdn, dn_post_process
 from models.dino.matcher import build_matcher
 from models.dino.segmentation import DETRsegm, PostProcessSegm, PostProcessPanoptic
 from models.registry import MODULE_BUILD_FUNCS
-from typing import List
+from typing import List, Tuple
 
-from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
-                       accuracy, get_world_size, interpolate,
-                       is_dist_avail_and_initialized, inverse_sigmoid)
+from util.misc import (NestedTensor, nested_tensor_from_tensor_list, inverse_sigmoid)
 import torch.nn.functional as F
 
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoModel
 
 
 class MultimodalDINO(DINO):
@@ -92,7 +90,7 @@ class MultimodalDINO(DINO):
         # self.tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased') better do that in dataset next
         self.text_backbone = AutoModel.from_pretrained('distilbert-base-uncased')
 
-    def forward(self, samples: NestedTensor, targets: List = None):
+    def forward(self, samples: Tuple[NestedTensor, List[torch.tensor]], targets: List = None):
         """ The forward expects a NestedTensor, which consists of:
                - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
                - text_input.tensor: batched text metadata, of shape [batch_size x 1 x length]
@@ -108,8 +106,12 @@ class MultimodalDINO(DINO):
                - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
                                 dictionnaries containing the two above keys for each decoder layer.
         """
-        if isinstance(samples, (list, torch.Tensor)):
-            samples = nested_tensor_from_tensor_list(samples)
+        img_input = NestedTensor(samples.tensors, samples.mask)
+        tokens_tensor, token_mask = samples.tokens, torch.ones_like(samples.tokens).to(samples.device)
+
+        text_embs =  self.text_backbone(tokens_tensor, token_mask) # (bs x 1 x 256)
+        if isinstance(img_input, (list, torch.Tensor)):
+            img_input = nested_tensor_from_tensor_list(img_input)
         features, poss = self.backbone(samples)
 
         srcs = []
@@ -142,7 +144,6 @@ class MultimodalDINO(DINO):
             assert targets is None
             input_query_bbox = input_query_label = attn_mask = dn_meta = None
 
-        text_embs =  self.text_backbone(text_input) # (bs x 1 x 256)
         # srcs: [(bs x c x h x w)] (len 3)
 
         # hs, reference, .... = self.transformer(srcs, text_srcs, ... )

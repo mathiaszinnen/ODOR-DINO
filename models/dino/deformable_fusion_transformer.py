@@ -40,7 +40,8 @@ class DeformableFusionTransformer(DeformableTransformer):
             src_flatten.append(src)
             mask_flatten.append(mask)
         src_flatten = torch.cat(src_flatten, 1)  # bs, \sum{hxw}, c
-        src_flatten = torch.cat(src_flatten, txt_emb, 1)
+        # fuse image embeddings with text embeddings. consider scales?
+        # src_flatten = torch.cat([src_flatten, txt_emb], 1)
         mask_flatten = torch.cat(mask_flatten, 1)  # bs, \sum{hxw}
         lvl_pos_embed_flatten = torch.cat(lvl_pos_embed_flatten, 1)  # bs, \sum{hxw}, c
         spatial_shapes = torch.as_tensor(spatial_shapes, dtype=torch.long, device=src_flatten.device)

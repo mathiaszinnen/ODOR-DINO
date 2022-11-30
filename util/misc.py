@@ -290,11 +290,13 @@ def collate_fn(batch):
 
 
 def collate_fn_mmodor(batch):
-    batch = list(zip(*batch))
-    batch[0] = nested_tensor_from_tensor_list(batch[0])
-    sample = torch.tensor([batch[0], batch[1]])
-    target = batch[2]
-    return (sample, target)
+    tokens = [sample[1] for sample in batch]
+    imgs_batch = [(sample[0], sample[2]) for sample in batch]
+
+    batch = list(zip(*imgs_batch))
+    nestedTensor = nested_tensor_from_tensor_list(batch[0])
+
+    return NestedMultimodalTensor(nestedTensor.tensors, tokens, nestedTensor.mask), batch[1]
 
 
 def _max_by_axis(the_list):
@@ -304,6 +306,7 @@ def _max_by_axis(the_list):
         for index, item in enumerate(sublist):
             maxes[index] = max(maxes[index], item)
     return maxes
+
 
 class NestedTensor(object):
     def __init__(self, tensors, mask: Optional[Tensor]):
@@ -377,6 +380,23 @@ class NestedTensor(object):
             'tensors.shape': self.tensors.shape,
             'mask.shape': self.mask.shape
         }
+
+
+class NestedMultimodalTensor(NestedTensor):
+    def __init__(self, tensors, tokens, mask: Optional[Tensor]):
+        super().__init__(tensors, mask)
+        if isinstance(tokens, list):
+            self.tokens = torch.stack(tokens)
+        elif isinstance(tokens, torch.Tensor):
+            self.tokens = tokens
+        else:
+            raise Exception('unexpected type for tokens')
+
+
+    def to(self, device):
+        nestedTensor = super().to(device)
+        cast_tokens = self.tokens.to(device)
+        return NestedMultimodalTensor(nestedTensor.tensors, cast_tokens, nestedTensor.mask)
 
 
 def nested_tensor_from_tensor_list(tensor_list: List[Tensor]):

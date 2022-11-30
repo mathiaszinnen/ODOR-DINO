@@ -5,6 +5,7 @@ from transformers import AutoTokenizer
 
 from .coco import CocoDetection, get_aux_target_hacks_list, make_coco_transforms
 import pandas as pd
+import torch
 
 from datasets.data_util import preparing_dataset
 
@@ -15,16 +16,20 @@ class MMOdorDetection(CocoDetection):
         super(MMOdorDetection, self).__init__(img_folder, ann_file, transforms, return_masks, aux_target_hacks=aux_target_hacks)
         # handle txt_csv
         self.txt_df = pd.read_csv(txt_csv)
-        self.tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
+        self.tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased', model_max_length=64)
 
     def __getitem__(self, idx):
         img, target = super().__getitem__(idx)
         # get txt from txt csv
         fn = self.coco.loadImgs(idx)[0]["file_name"]
         txt = self.txt_df[self.txt_df['File Name'] == fn]["Title"].values[0]
-        embedding = self.tokenizer(txt)
+        if txt != txt: # txt isnan
+            txt = ''
+        tokens = self.tokenizer(txt, padding='max_length')
+        # todo: transform text embedding to
+        tokens_tensor = torch.tensor(tokens.encodings[0].ids)
 
-        return img, embedding, target
+        return (img, tokens_tensor, target)
 
 
 def build(image_set, args):
