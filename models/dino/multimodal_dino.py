@@ -1,13 +1,16 @@
+import math
+
 import torch
 from torch import nn
 import copy
 
 from models.dino.backbone import build_backbone
 from models.dino.deformable_fusion_transformer import build_deformable_fusion_transformer
-from models.dino.dino import DINO, SetCriterion, PostProcess
+from models.dino.dino import SetCriterion, PostProcess
 from models.dino.dn_components import prepare_for_cdn, dn_post_process
 from models.dino.matcher import build_matcher
 from models.dino.segmentation import DETRsegm, PostProcessSegm, PostProcessPanoptic
+from models.dino.utils import MLP
 from models.registry import MODULE_BUILD_FUNCS
 from typing import List, Tuple
 
@@ -17,63 +20,59 @@ import torch.nn.functional as F
 from transformers import AutoModel
 
 
-class MultimodalDINO(DINO):
-
+class MultimodalDINO(nn.Module):
+    """ This is the Cross-Attention Detector module that performs object detection
+     Copied everything over because inheritance does crazy stuff"""
     def __init__(self, backbone, transformer, num_classes, num_queries,
-                 aux_loss=False, iter_update=False,
-                 query_dim=2,
-                 random_refpoints_xy=False,
-                 fix_refpoints_hw=-1,
-                 num_feature_levels=1,
-                 nheads=8,
-                 # two stage
-                 two_stage_type='no', # ['no', 'standard']
-                 two_stage_add_query_num=0,
-                 dec_pred_class_embed_share=True,
-                 dec_pred_bbox_embed_share=True,
-                 two_stage_class_embed_share=True,
-                 two_stage_bbox_embed_share=True,
-                 decoder_sa_type = 'sa',
-                 num_patterns = 0,
-                 dn_number = 100,
-                 dn_box_noise_scale = 0.4,
-                 dn_label_noise_ratio = 0.5,
-                 dn_labelbook_size = 100,
-                 ):
-        # super().__init__(backbone, transformer, num_classes, num_queries,
-        #         aux_loss=aux_loss,
-        #          iter_update=iter_update,
-        #          query_dim=query_dim,
-        #          random_refpoints_xy=random_refpoints_xy,
-        #          fix_refpoints_hw=-fix_refpoints_hw,
-        #          num_feature_levels=num_feature_levels,
-        #          nheads=nheads,
-        #          # two stage
-        #          two_stage_type=two_stage_type, # ['no', 'standard']
-        #          two_stage_add_query_num=two_stage_add_query_num,
-        #          dec_pred_class_embed_share=dec_pred_class_embed_share,
-        #          dec_pred_bbox_embed_share=dec_pred_bbox_embed_share,
-        #          two_stage_class_embed_share=two_stage_class_embed_share,
-        #          two_stage_bbox_embed_share=two_stage_bbox_embed_share,
-        #          decoder_sa_type = decoder_sa_type,
-        #          num_patterns = num_patterns,
-        #          dn_number = dn_number,
-        #          dn_box_noise_scale = dn_box_noise_scale,
-        #          dn_label_noise_ratio = dn_label_noise_ratio,
-        #          dn_labelbook_size = dn_labelbook_size,)
-        super().__init__(backbone=backbone, transformer=transformer, num_classes=num_classes, num_queries=num_queries,
-                         num_feature_levels=num_feature_levels, iter_update=iter_update, query_dim=4,
-                         dec_pred_bbox_embed_share=dec_pred_bbox_embed_share
-                         )
-        ## copied from super
+                    aux_loss=False, iter_update=False,
+                    query_dim=2,
+                    random_refpoints_xy=False,
+                    fix_refpoints_hw=-1,
+                    num_feature_levels=1,
+                    nheads=8,
+                    # two stage
+                    two_stage_type='standard', # ['no', 'standard']
+                    two_stage_add_query_num=0,
+                    dec_pred_class_embed_share=True,
+                    dec_pred_bbox_embed_share=True,
+                    two_stage_class_embed_share=True,
+                    two_stage_bbox_embed_share=True,
+                    decoder_sa_type = 'sa',
+                    num_patterns = 0,
+                    dn_number = 100,
+                    dn_box_noise_scale = 0.4,
+                    dn_label_noise_ratio = 0.5,
+                    dn_labelbook_size = 100,
+                    ):
+        """ Initializes the model.
+        Parameters:
+            backbone: torch module of the backbone to be used. See backbone.py
+            transformer: torch module of the transformer architecture. See transformer.py
+            num_classes: number of object classes
+            num_queries: number of object queries, ie detection slot. This is the maximal number of objects
+                         Conditional DETR can detect in a single image. For COCO, we recommend 100 queries.
+            aux_loss: True if auxiliary decoding losses (loss at each decoder layer) are to be used.
+
+            fix_refpoints_hw: -1(default): learn w and h for each box seperately
+                                >0 : given fixed number
+                                -2 : learn a shared w and h
+        """
+        super().__init__()
+
+        # add text backbone
+        self.text_backbone = AutoModel.from_pretrained('distilbert-base-uncased')
+
         self.num_queries = num_queries
         self.transformer = transformer
         self.num_classes = num_classes
         self.hidden_dim = hidden_dim = transformer.d_model
-        # self.num_feature_levels = num_feature_levels
+        self.num_feature_levels = num_feature_levels
         self.nheads = nheads
         self.label_enc = nn.Embedding(dn_labelbook_size + 1, hidden_dim)
 
+        # setting query dim
+        self.query_dim = query_dim
+        assert query_dim == 4
         self.random_refpoints_xy = random_refpoints_xy
         self.fix_refpoints_hw = fix_refpoints_hw
 
@@ -84,11 +83,98 @@ class MultimodalDINO(DINO):
         self.dn_label_noise_ratio = dn_label_noise_ratio
         self.dn_labelbook_size = dn_labelbook_size
 
+        # prepare input projection layers
+        if num_feature_levels > 1:
+            num_backbone_outs = len(backbone.num_channels)
+            input_proj_list = []
+            for _ in range(num_backbone_outs):
+                in_channels = backbone.num_channels[_]
+                input_proj_list.append(nn.Sequential(
+                    nn.Conv2d(in_channels, hidden_dim, kernel_size=1),
+                    nn.GroupNorm(32, hidden_dim),
+                ))
+            for _ in range(num_feature_levels - num_backbone_outs):
+                input_proj_list.append(nn.Sequential(
+                    nn.Conv2d(in_channels, hidden_dim, kernel_size=3, stride=2, padding=1),
+                    nn.GroupNorm(32, hidden_dim),
+                ))
+                in_channels = hidden_dim
+            self.input_proj = nn.ModuleList(input_proj_list)
+        else:
+            assert two_stage_type == 'no', "two_stage_type should be no if num_feature_levels=1 !!!"
+            self.input_proj = nn.ModuleList([
+                nn.Sequential(
+                    nn.Conv2d(backbone.num_channels[-1], hidden_dim, kernel_size=1),
+                    nn.GroupNorm(32, hidden_dim),
+                )])
 
+        self.backbone = backbone
+        self.aux_loss = aux_loss
+        self.box_pred_damping = box_pred_damping = None
 
-        ## add text embedding extraction clip backbone
-        # self.tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased') better do that in dataset next
-        self.text_backbone = AutoModel.from_pretrained('distilbert-base-uncased')
+        self.iter_update = iter_update
+        assert iter_update, "Why not iter_update?"
+
+        # prepare pred layers
+        self.dec_pred_class_embed_share = dec_pred_class_embed_share
+        self.dec_pred_bbox_embed_share = dec_pred_bbox_embed_share
+        # prepare class & box embed
+        _class_embed = nn.Linear(hidden_dim, num_classes)
+        _bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
+        # init the two embed layers
+        prior_prob = 0.01
+        bias_value = -math.log((1 - prior_prob) / prior_prob)
+        _class_embed.bias.data = torch.ones(self.num_classes) * bias_value
+        nn.init.constant_(_bbox_embed.layers[-1].weight.data, 0)
+        nn.init.constant_(_bbox_embed.layers[-1].bias.data, 0)
+
+        if dec_pred_bbox_embed_share:
+            box_embed_layerlist = [_bbox_embed for i in range(transformer.num_decoder_layers)]
+        else:
+            box_embed_layerlist = [copy.deepcopy(_bbox_embed) for i in range(transformer.num_decoder_layers)]
+        if dec_pred_class_embed_share:
+            class_embed_layerlist = [_class_embed for i in range(transformer.num_decoder_layers)]
+        else:
+            class_embed_layerlist = [copy.deepcopy(_class_embed) for i in range(transformer.num_decoder_layers)]
+        self.bbox_embed = nn.ModuleList(box_embed_layerlist)
+        self.class_embed = nn.ModuleList(class_embed_layerlist)
+        self.transformer.decoder.bbox_embed = self.bbox_embed
+        self.transformer.decoder.class_embed = self.class_embed
+
+        # two stage
+        self.two_stage_type = two_stage_type
+        self.two_stage_add_query_num = two_stage_add_query_num
+        assert two_stage_type in ['no', 'standard'], "unknown param {} of two_stage_type".format(two_stage_type)
+        if two_stage_type != 'no':
+            if two_stage_bbox_embed_share:
+                assert dec_pred_class_embed_share and dec_pred_bbox_embed_share
+                self.transformer.enc_out_bbox_embed = _bbox_embed
+            else:
+                self.transformer.enc_out_bbox_embed = copy.deepcopy(_bbox_embed)
+
+            if two_stage_class_embed_share:
+                assert dec_pred_class_embed_share and dec_pred_bbox_embed_share
+                self.transformer.enc_out_class_embed = _class_embed
+            else:
+                self.transformer.enc_out_class_embed = copy.deepcopy(_class_embed)
+
+            self.refpoint_embed = None
+            if self.two_stage_add_query_num > 0:
+                self.init_ref_points(two_stage_add_query_num)
+
+        self.decoder_sa_type = decoder_sa_type
+        assert decoder_sa_type in ['sa', 'ca_label', 'ca_content']
+        # self.replace_sa_with_double_ca = replace_sa_with_double_ca
+        if decoder_sa_type == 'ca_label':
+            self.label_embedding = nn.Embedding(num_classes, hidden_dim)
+            for layer in self.transformer.decoder.layers:
+                layer.label_embedding = self.label_embedding
+        else:
+            for layer in self.transformer.decoder.layers:
+                layer.label_embedding = None
+            self.label_embedding = None
+
+        self._reset_parameters()
 
     def forward(self, samples: Tuple[NestedTensor, List[torch.tensor]], targets: List = None):
         """ The forward expects a NestedTensor, which consists of:
@@ -109,7 +195,7 @@ class MultimodalDINO(DINO):
         img_input = NestedTensor(samples.tensors, samples.mask)
         tokens_tensor, token_mask = samples.tokens, torch.ones_like(samples.tokens).to(samples.device)
 
-        text_embs =  self.text_backbone(tokens_tensor, token_mask) # (bs x 1 x 256)
+        text_embs = self.text_backbone(tokens_tensor, token_mask)  # (bs x 1 x 256)
         if isinstance(img_input, (list, torch.Tensor)):
             img_input = nested_tensor_from_tensor_list(img_input)
         features, poss = self.backbone(samples)
@@ -147,7 +233,8 @@ class MultimodalDINO(DINO):
         # srcs: [(bs x c x h x w)] (len 3)
 
         # hs, reference, .... = self.transformer(srcs, text_srcs, ... )
-        hs, reference, hs_enc, ref_enc, init_box_proposal = self.transformer(srcs, text_embs, masks, input_query_bbox, poss,
+        hs, reference, hs_enc, ref_enc, init_box_proposal = self.transformer(srcs, text_embs, masks, input_query_bbox,
+                                                                             poss,
                                                                              input_query_label, attn_mask)
         # In case num object=0
         hs[0] += self.label_enc.weight[0, 0] * 0.0
@@ -207,6 +294,48 @@ class MultimodalDINO(DINO):
         out['dn_meta'] = dn_meta
 
         return out
+
+    def _reset_parameters(self):
+        # init input_proj
+        for proj in self.input_proj:
+            nn.init.xavier_uniform_(proj[0].weight, gain=1)
+            nn.init.constant_(proj[0].bias, 0)
+
+    def init_ref_points(self, use_num_queries):
+        self.refpoint_embed = nn.Embedding(use_num_queries, self.query_dim)
+
+        if self.random_refpoints_xy:
+            # import ipdb; ipdb.set_trace()
+            self.refpoint_embed.weight.data[:, :2].uniform_(0, 1)
+            self.refpoint_embed.weight.data[:, :2] = inverse_sigmoid(self.refpoint_embed.weight.data[:, :2])
+            self.refpoint_embed.weight.data[:, :2].requires_grad = False
+
+        if self.fix_refpoints_hw > 0:
+            print("fix_refpoints_hw: {}".format(self.fix_refpoints_hw))
+            assert self.random_refpoints_xy
+            self.refpoint_embed.weight.data[:, 2:] = self.fix_refpoints_hw
+            self.refpoint_embed.weight.data[:, 2:] = inverse_sigmoid(self.refpoint_embed.weight.data[:, 2:])
+            self.refpoint_embed.weight.data[:, 2:].requires_grad = False
+        elif int(self.fix_refpoints_hw) == -1:
+            pass
+        elif int(self.fix_refpoints_hw) == -2:
+            print('learn a shared h and w')
+            assert self.random_refpoints_xy
+            self.refpoint_embed = nn.Embedding(use_num_queries, 2)
+            self.refpoint_embed.weight.data[:, :2].uniform_(0, 1)
+            self.refpoint_embed.weight.data[:, :2] = inverse_sigmoid(self.refpoint_embed.weight.data[:, :2])
+            self.refpoint_embed.weight.data[:, :2].requires_grad = False
+            self.hw_embed = nn.Embedding(1, 1)
+        else:
+            raise NotImplementedError('Unknown fix_refpoints_hw {}'.format(self.fix_refpoints_hw))
+
+    @torch.jit.unused
+    def _set_aux_loss(self, outputs_class, outputs_coord):
+        # this is a workaround to make torchscript happy, as torchscript
+        # doesn't support dictionary with non-homogeneous values, such
+        # as a dict having both a Tensor and a list.
+        return [{'pred_logits': a, 'pred_boxes': b}
+                for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
 
 
 @MODULE_BUILD_FUNCS.registe_with_name(module_name='multimodal_dino')
