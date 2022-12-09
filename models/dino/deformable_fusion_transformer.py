@@ -48,6 +48,12 @@ class DeformableFusionTransformer(DeformableTransformer):
         level_start_index = torch.cat((spatial_shapes.new_zeros((1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
         valid_ratios = torch.stack([self.get_valid_ratio(m) for m in masks], 1)
 
+        # fuse text and image embeddings
+        txt_emb = txt_emb.last_hidden_state #(bs, 64, 768)
+        # average over channels (bs, 64, 768) -> (bs, 64, 256)
+        # txt_embs = torch.split(txt_emb,256,dim=2)
+        txt_embs = txt_emb.reshape(3,2,64,256)
+
         # two stage
         enc_topk_proposals = enc_refpoint_embed = None
 
