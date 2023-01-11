@@ -1,11 +1,11 @@
 # ODOR-DINO <img src="figs/dinosaur.png" width="30">
 
-This is an adapted version of the official PyTorch [implementation](https://github.com/IDEA-Research/DINO) for DINO. 
+This is an adapted version of the official PyTorch [implementation](https://github.com/IDEA-Research/DINO) for DINO. It is used in the Odeuropa project to train our baseline models for the detection of olfactory objects.
 
 
 ## Installation
 
-Please refeer to the original repository installation [instructions](https://github.com/IDEA-Research/DINO#installation).
+Please refer to the original repository installation [instructions](https://github.com/IDEA-Research/DINO#installation).
 
 
 ## Fine-Tune
