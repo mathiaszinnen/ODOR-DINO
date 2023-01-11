@@ -1,9 +1,13 @@
 # ODOR-DINO <img src="figs/dinosaur.png" width="30">
 
+This is an adapted version of the official PyTorch [implementation](https://github.com/IDEA-Research/DINO) for DINO. 
+
 
 ## Installation
 
-Refer to the original repository installation [instructions](https://github.com/facebookresearch/dino#training).
+Refer to the original repository installation [instructions](https://github.com/IDEA-Research/DINO#installation).
+
+
 ## Fine-Tune
 Organize your data in coco format, i.e. 
 ```
