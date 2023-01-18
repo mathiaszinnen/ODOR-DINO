@@ -23,3 +23,4 @@ vis/
 model_zoo/
 model_zoo_old/
 models/dino/ops/
+predictions/
