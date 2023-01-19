@@ -5,9 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="cfbad357-15ac-4393-b09b-c1a243566f42" name="Default Changelist" comment="Update gitignore">
-      <change beforePath="$PROJECT_DIR$/config_args_raw.json" beforeDir="false" afterPath="$PROJECT_DIR$/config_args_raw.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config_cfg.py" beforeDir="false" afterPath="$PROJECT_DIR$/config_cfg.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/dino/deformable_fusion_transformer.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/dino/deformable_fusion_transformer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/inference_odor.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/inference_odor.ipynb" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -96,6 +94,7 @@
       <workItem from="1670517069007" duration="407000" />
       <workItem from="1670519649765" duration="6000" />
       <workItem from="1670596988229" duration="4501000" />
+      <workItem from="1674057466688" duration="11000" />
     </task>
     <option name="localTasksCounter" value="2" />
     <servers />
@@ -128,29 +127,14 @@
           <option name="timeStamp" value="8" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/models/dino/multimodal_dino.py</url>
-          <line>194</line>
-          <option name="timeStamp" value="9" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/util/misc.py</url>
-          <line>418</line>
+          <line>391</line>
           <option name="timeStamp" value="12" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/models/dino/deformable_fusion_transformer.py</url>
-          <line>62</line>
-          <option name="timeStamp" value="13" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/models/dino/deformable_transformer.py</url>
-          <line>303</line>
+          <line>302</line>
           <option name="timeStamp" value="14" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/models/dino/deformable_fusion_transformer.py</url>
-          <line>57</line>
-          <option name="timeStamp" value="15" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
